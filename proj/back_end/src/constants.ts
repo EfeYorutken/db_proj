@@ -12,6 +12,10 @@ export interface effect extends RowDataPacket{
 	fixes : string;
 }
 
+export interface id_result extends RowDataPacket{
+	med_id : number;
+}
+
 export interface side_effect extends RowDataPacket{
 	side_effect : string;
 }

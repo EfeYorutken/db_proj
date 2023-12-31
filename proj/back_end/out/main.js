@@ -30,15 +30,17 @@ const fn = __importStar(require("./functions"));
  * ------------
  *  > git push at each step
  *  [ ] see that for loop in main, the one that goes to k, yeah, optimize
- *  [ ] turn the for loop with i index into a while that
+ *  [x] turn the for loop with i index into a while that
  *		- continiues until the symps is empty
  *		- the newly added prescription is the same as the old one
  *	[ ] add crud operations
  *		 [ ] create
  *			- meds
+ *			- symptoms
  *		[x] read
  *		[ ] update
  *		[ ] delete
+ *	[ ] clean up all that is not used
  *	[ ] front end
  * */
 const access = {
@@ -49,25 +51,7 @@ const access = {
 const con = mysql.createPool(access);
 const main = async () => {
     let symps = ["drops bp", "depression"];
-    let meds = [];
-    let options = await fn.compute_best_options(con, symps);
-    //optimize for loop with i to while
-    for (let i = 0; i < 10 && symps.length > 0; i++) {
-        //turn this monsteroucity into a decent piece of code
-        for (let j = 0; j < options.length; j++) {
-            for (let k = 0; k < meds.length; k++) {
-                if (meds[k].id == options[j].id) {
-                    options.splice(j, 1);
-                }
-            }
-        }
-        options.forEach(o => {
-            meds.push(o);
-        });
-        symps = await fn.apply_medication(meds, symps);
-    }
-    meds.forEach(m => {
-        console.log(m.name);
-    });
+    let pres = await fn.create_prescription(con, symps);
+    console.log(pres);
 };
 main();

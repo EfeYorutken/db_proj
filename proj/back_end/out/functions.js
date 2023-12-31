@@ -23,7 +23,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.apply_medication = exports.compute_best_options = void 0;
+exports.create_prescription = exports.apply_medication = void 0;
 const consts = __importStar(require("./constants"));
 //given a query and a connection, executes the query and returns the rows as a generic array
 const query_result = async (con, query) => {
@@ -72,7 +72,6 @@ const compute_best_options = async (con, symptoms) => {
     return res;
     //return get_full_medication(con,res[0].name);
 };
-exports.compute_best_options = compute_best_options;
 //creates medication given a connection and a medication name
 const get_full_medication = async (con, med_name) => {
     const neg_query = ` select neg_effect.side_effect from medication inner join has_side_effect on has_side_effect.medication_id = medication.med_id inner join neg_effect on has_side_effect.side_effect_id = neg_effect.neg_id where medication.name = "${med_name}";`;
@@ -82,7 +81,7 @@ const get_full_medication = async (con, med_name) => {
     res.name = med_name;
     res.id = await query_result(con, id_query)
         .then(res => {
-        return res[0];
+        return res[0].med_id;
     });
     const n_arr = await query_result(con, neg_query)
         .then(arr => {
@@ -130,3 +129,29 @@ const apply_medication = async (meds, symps) => {
     return temp;
 };
 exports.apply_medication = apply_medication;
+const create_prescription = async (con, symps) => {
+    let meds = [];
+    let options = await compute_best_options(con, symps);
+    let list_of_previous_symps = [];
+    while (symps.length > 0) {
+        //turn this monsteroucity into a decent piece of code
+        for (let j = 0; j < options.length; j++) {
+            for (let k = 0; k < meds.length; k++) {
+                if (meds[k].id == options[j].id) {
+                    options.splice(j, 1);
+                }
+            }
+        }
+        options.forEach(o => {
+            meds.push(o);
+        });
+        symps = await (0, exports.apply_medication)(meds, symps);
+        const current_symps = symps.join(",");
+        if (list_of_previous_symps.includes(current_symps)) {
+            break;
+        }
+        list_of_previous_symps.push(current_symps);
+    }
+    return meds;
+};
+exports.create_prescription = create_prescription;

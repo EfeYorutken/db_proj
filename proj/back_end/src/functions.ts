@@ -1,4 +1,3 @@
-//108 err
 import * as mysql from "mysql2/promise";
 import * as consts from "./constants"
 
@@ -38,7 +37,7 @@ const can_fix = (pos : string):string=>{
 }
 
 //given a connection and some symptoms returns the medication that fixes the problem and has the least amount of side effects
-export const compute_best_options = async(con : mysql.Pool, symptoms : string[]) : Promise<consts.iMedication[]>=>{
+ const compute_best_options = async(con : mysql.Pool, symptoms : string[]) : Promise<consts.iMedication[]>=>{
 	let fixes : string[] = [];
 	symptoms.forEach(symp =>{
 		fixes.push(get_fix(symp));
@@ -82,9 +81,9 @@ const get_full_medication = async(con : mysql.Pool, med_name : string) : Promise
 	let res : consts.iMedication = { id : -1, name : "" ,side_effects : [] ,effects : [] } as consts.iMedication;
 	res.name = med_name;
 
-	res.id = await query_result<number>(con,id_query)
+	res.id = await query_result<consts.id_result>(con,id_query)
 	.then(res =>{
-		return res[0];
+		return (res[0] as consts.id_result).med_id;
 	});
 
 	const n_arr : string[] = await query_result<consts.side_effect>(con, neg_query)
@@ -143,3 +142,33 @@ export const apply_medication = async(meds : consts.iMedication[], symps : strin
 
 }
 
+export const create_prescription = async(con : mysql.Pool, symps : string[]) : Promise<consts.iMedication[]>=>{
+	let meds : consts.iMedication[] = [];
+	let options = await compute_best_options(con,symps);
+
+	let list_of_previous_symps : string[] = [];
+
+	while(symps.length > 0){
+
+		//turn this monsteroucity into a decent piece of code
+		for(let j = 0; j < options.length; j++){
+			for(let k = 0; k < meds.length; k++){
+				if(meds[k].id == options[j].id){
+					options.splice(j,1);
+				}
+			}
+		}
+
+		options.forEach(o =>{
+			meds.push(o);
+		});
+		symps = await apply_medication(meds, symps);
+		const current_symps = symps.join(",");
+		if(list_of_previous_symps.includes(current_symps)){
+			break;
+		}
+		list_of_previous_symps.push(current_symps);
+	}
+
+	return meds;
+}
