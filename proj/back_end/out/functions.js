@@ -23,7 +23,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.net_side_effect = exports.compute_best_options = void 0;
+exports.apply_medication = exports.compute_best_options = void 0;
 const consts = __importStar(require("./constants"));
 //given a query and a connection, executes the query and returns the rows as a generic array
 const query_result = async (con, query) => {
@@ -64,18 +64,42 @@ const compute_best_options = async (con, symptoms) => {
     bool_statement += ` or pos_effect.fixes = "${fixes[fixes.length - 1]}"`;
     let base_query = `select meds.name,count(meds.side_effect) from ( select medication.name,neg_effect.side_effect,pos_effect.fixes from medication inner join has_effect on has_effect.medication_id = medication.med_id inner join pos_effect on has_effect.effect_id = pos_effect.pos_id inner join has_side_effect on has_side_effect.medication_id = medication.med_id inner join neg_effect on neg_effect.neg_id = has_side_effect.side_effect_id where pos_effect.fixes = ${bool_statement}`;
     base_query = `${base_query} or pos_effect.fixes = "${fixes[fixes.length - 1]}") as meds group by meds.name order by count(meds.side_effect);`;
-    const res = await query_result(con, base_query);
-    return get_full_medication(con, res[0].name);
+    const res_of_query = await query_result(con, base_query);
+    let res = [];
+    for (let i = 0; i < res_of_query.length; i++) {
+        res.push(await get_full_medication(con, res_of_query[i].name).then(r => { return r; }));
+    }
+    return res;
+    //return get_full_medication(con,res[0].name);
 };
 exports.compute_best_options = compute_best_options;
 //creates medication given a connection and a medication name
 const get_full_medication = async (con, med_name) => {
     const neg_query = ` select neg_effect.side_effect from medication inner join has_side_effect on has_side_effect.medication_id = medication.med_id inner join neg_effect on has_side_effect.side_effect_id = neg_effect.neg_id where medication.name = "${med_name}";`;
     const pos_query = `select pos_effect.fixes from medication inner join has_effect on has_effect.medication_id = medication.med_id inner join pos_effect on has_effect.effect_id = pos_effect.pos_id where medication.name = "${med_name}";`;
-    let res = { name: "", side_effects: [], effects: [] };
+    const id_query = `select med_id from medication where medication.name = "${med_name}"`;
+    let res = { id: -1, name: "", side_effects: [], effects: [] };
     res.name = med_name;
-    const n_arr = await query_result(con, neg_query).then(arr => { return arr; });
-    const p_arr = await query_result(con, pos_query).then(arr => { return arr; });
+    res.id = await query_result(con, id_query)
+        .then(res => {
+        return res[0];
+    });
+    const n_arr = await query_result(con, neg_query)
+        .then(arr => {
+        let se_arr = [];
+        arr.forEach(se => {
+            se_arr.push(se.side_effect);
+        });
+        return se_arr;
+    });
+    const p_arr = await query_result(con, pos_query)
+        .then(arr => {
+        let e_arr = [];
+        arr.forEach(e => {
+            e_arr.push(e.fixes);
+        });
+        return e_arr;
+    });
     n_arr.forEach(neg => {
         res.side_effects.push(neg);
     });
@@ -84,23 +108,25 @@ const get_full_medication = async (con, med_name) => {
     });
     return res;
 };
-const check_if_med_has_fix_for = (med, neg) => {
-    for (let i = 0; i < med.effects.length; i++) {
-        if (can_fix(med.effects[i]) == neg) {
-            return i;
-        }
-    }
-    return -1;
-};
-const net_side_effect = async (meds, negs) => {
-    let res = [...negs];
-    negs.forEach(n => {
-        meds.forEach(med => {
-            if (check_if_med_has_fix_for(med, n) != -1) {
-                res.splice(res.indexOf(n), 1);
+//wtf is wrong with this
+const apply_medication = async (meds, symps) => {
+    let temp = [...symps];
+    let effects = [];
+    meds.forEach(med => {
+        med.side_effects.forEach(se => {
+            if (!temp.includes(se)) {
+                temp.push(se);
             }
         });
+        med.effects.forEach(ef => {
+            effects.push(ef);
+        });
     });
-    return res;
+    for (let i = 0; i < temp.length; i++) {
+        if (effects.includes(get_fix(temp[i]))) {
+            temp.splice(i, 1);
+        }
+    }
+    return temp;
 };
-exports.net_side_effect = net_side_effect;
+exports.apply_medication = apply_medication;

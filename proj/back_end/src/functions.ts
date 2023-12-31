@@ -1,3 +1,4 @@
+//108 err
 import * as mysql from "mysql2/promise";
 import * as consts from "./constants"
 
@@ -37,7 +38,7 @@ const can_fix = (pos : string):string=>{
 }
 
 //given a connection and some symptoms returns the medication that fixes the problem and has the least amount of side effects
-export const compute_best_options = async(con : mysql.Pool, symptoms : string[]) : Promise<consts.iMedication>=>{
+export const compute_best_options = async(con : mysql.Pool, symptoms : string[]) : Promise<consts.iMedication[]>=>{
 	let fixes : string[] = [];
 	symptoms.forEach(symp =>{
 		fixes.push(get_fix(symp));
@@ -58,9 +59,16 @@ export const compute_best_options = async(con : mysql.Pool, symptoms : string[])
 
 	base_query = `${base_query} or pos_effect.fixes = "${fixes[fixes.length-1]}") as meds group by meds.name order by count(meds.side_effect);`;
 
-	const res = await query_result<consts.iMedication>(con,base_query) as consts.iMedication[];
+	const res_of_query = await query_result<consts.iMedication>(con,base_query) as consts.iMedication[];
 
-	return get_full_medication(con,res[0].name);
+	let res : consts.iMedication[] = [];
+
+	for(let i = 0; i < res_of_query.length; i++){
+		res.push(await get_full_medication(con,res_of_query[i].name).then(r =>{return r;}));
+	}
+
+	return res;
+	//return get_full_medication(con,res[0].name);
 }
 
 //creates medication given a connection and a medication name
@@ -69,11 +77,33 @@ const get_full_medication = async(con : mysql.Pool, med_name : string) : Promise
 
 	const pos_query = `select pos_effect.fixes from medication inner join has_effect on has_effect.medication_id = medication.med_id inner join pos_effect on has_effect.effect_id = pos_effect.pos_id where medication.name = "${med_name}";`
 
-	let res : consts.iMedication = { name : "" ,side_effects : [] ,effects : [] } as consts.iMedication;
+	const id_query = `select med_id from medication where medication.name = "${med_name}"`;
+
+	let res : consts.iMedication = { id : -1, name : "" ,side_effects : [] ,effects : [] } as consts.iMedication;
 	res.name = med_name;
 
-	const n_arr : string[] = await query_result(con, neg_query).then(arr => { return arr as string[]});
-	const p_arr : string[] = await query_result(con, pos_query).then(arr => { return arr as string[]});
+	res.id = await query_result<number>(con,id_query)
+	.then(res =>{
+		return res[0];
+	});
+
+	const n_arr : string[] = await query_result<consts.side_effect>(con, neg_query)
+	.then(arr => {
+		let se_arr : string[] = [];
+		arr.forEach(se=>{
+			se_arr.push(se.side_effect);
+		});
+		return se_arr;
+	});
+
+	const p_arr : string[] = await query_result<consts.effect>(con, pos_query)
+	.then(arr => {
+		let e_arr : string[] = [];
+		arr.forEach(e=>{
+			e_arr.push(e.fixes);
+		});
+		return e_arr;
+	});
 
 	n_arr.forEach(neg =>{
 		res.side_effects.push(neg);
@@ -87,21 +117,29 @@ const get_full_medication = async(con : mysql.Pool, med_name : string) : Promise
 
 }
 
-const check_if_med_has_fix_for = (med : consts.iMedication, neg:string):number=>{
-	for(let i = 0; i < med.effects.length; i++){
-		if(can_fix(med.effects[i]) == neg){return i;}
-	}
-	return -1;
-}
-
-export const net_side_effect = async(meds : consts.iMedication[], negs : string[]):Promise<string[]>=>{
-	let res : string[] = [...negs];
-	negs.forEach(n =>{
-		meds.forEach(med =>{
-			if(check_if_med_has_fix_for(med,n) != -1){
-				res.splice(res.indexOf(n),1);
+//wtf is wrong with this
+export const apply_medication = async(meds : consts.iMedication[], symps : string[]) : Promise<string[]>=>{
+	let temp = [...symps];
+	let effects : string[] = [];
+	meds.forEach(med =>{
+		med.side_effects.forEach(se =>{
+			if(!temp.includes(se)){
+				temp.push(se);
 			}
 		});
+		med.effects.forEach(ef =>{
+			effects.push(ef);
+		});
 	});
-	return res;
+
+
+	for(let i = 0; i < temp.length; i++){
+		if(effects.includes(get_fix(temp[i]))){
+			temp.splice(i,1);
+		}
+	}
+
+	return temp;
+
 }
+

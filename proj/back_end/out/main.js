@@ -24,19 +24,23 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const mysql = __importStar(require("mysql2/promise"));
+const fn = __importStar(require("./functions"));
 /*
- * PLAN
- * [x] seperate constants and functions and such
- * [x] sql q in  get_best_option does not work, fix
- * [ ] carry on with the front end
- * [ ] all of CRUD operations
- *		[ ] create medication and side_effect/effect combo
- *		[x] read medication and side_effect/effect combo
- *		[ ] update medications with sideeffects and effects of medications
- *		[ ] delete medications and sideffects
-
- *
- */
+ * shit to do
+ * ------------
+ *  > git push at each step
+ *  [ ] see that for loop in main, the one that goes to k, yeah, optimize
+ *  [ ] turn the for loop with i index into a while that
+ *		- continiues until the symps is empty
+ *		- the newly added prescription is the same as the old one
+ *	[ ] add crud operations
+ *		 [ ] create
+ *			- meds
+ *		[x] read
+ *		[ ] update
+ *		[ ] delete
+ *	[ ] front end
+ * */
 const access = {
     user: "root",
     password: "Efe020202@sql",
@@ -44,11 +48,26 @@ const access = {
 };
 const con = mysql.createPool(access);
 const main = async () => {
-    /*
-     * PLAN
-     * - given the list of side_effects get the best med with compute_best_options
-     * - apply that med to the list with net_side_effect, result is the new side_effect
-     *   - while the side_effects are not empty (or for some itterations) repeate the process
-     */
+    let symps = ["drops bp", "depression"];
+    let meds = [];
+    let options = await fn.compute_best_options(con, symps);
+    //optimize for loop with i to while
+    for (let i = 0; i < 10 && symps.length > 0; i++) {
+        //turn this monsteroucity into a decent piece of code
+        for (let j = 0; j < options.length; j++) {
+            for (let k = 0; k < meds.length; k++) {
+                if (meds[k].id == options[j].id) {
+                    options.splice(j, 1);
+                }
+            }
+        }
+        options.forEach(o => {
+            meds.push(o);
+        });
+        symps = await fn.apply_medication(meds, symps);
+    }
+    meds.forEach(m => {
+        console.log(m.name);
+    });
 };
 main();
